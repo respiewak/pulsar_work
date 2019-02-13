@@ -7,12 +7,14 @@ from collections import OrderedDict
 
 
 def proc_args():
-    pars = ap.ArgumentParser(description="Convert a tempo2 style par file to a "
-                             "psrcat-style .db file")
+    pars = ap.ArgumentParser(description="Convert a tempo2 style par file "
+                             "to a psrcat-style .db file")
     pars.add_argument("pars", nargs="+", help="Par file(s) to convert")
-    pars.add_argument("-o", "--out", default="new.db", help="Filename for output")
+    pars.add_argument("-o", "--out", default="new.db", help="Filename for "
+                      "output")
     pars.add_argument("-a", "--append", action="store_true",
-                      help="Append to existing file (instead of writing new file)")
+                      help="Append to existing file (instead of writing "
+                      "new file)")
     return vars(pars.parse_args())
 
 
@@ -46,21 +48,22 @@ def read_par(parf, skip_pars):
         err = None
         f_type = None
         sline = line.split()
-        if sline[0] in skip_pars:
+        if len(sline) == 0 or sline[0] in skip_pars or line[0] == "#":
             continue
+
         par = sline[0]
         val = sline[1]
-        if len(sline) == 3:
-            err = sline[2]
+        if len(sline) == 3 and sline[2] not in ['0', '1']:
+            err = sline[2].replace('D', 'E')
         elif len(sline) == 4:
-            err = sline[3]
+            err = sline[3].replace('D', 'E')
 
         try:
             val = int(val)
         except ValueError:
             try:
-                val = Decimal(val)
-                if 'e' in sline[1] or 'E' in sline[1]:
+                val = Decimal(val.replace('D', 'E'))
+                if 'e' in sline[1] or 'E' in sline[1].replace('D', 'E'):
                     f_type = 'e'
                 else:
                     f_type = 'f'
@@ -80,7 +83,11 @@ def read_par(parf, skip_pars):
 
 def short_err(err):
     err = Decimal(err)
-    err_mag = err.logb()
+    if err != 0:
+        err_mag = err.logb()
+    else:
+        err_mag = Decimal(0)
+
     a = round(err/10**err_mag,0)
     b = float(10**max(Decimal(0), err_mag))
     return int(a*b)
@@ -88,7 +95,11 @@ def short_err(err):
 
 def short_float(val, err):
     err = Decimal(err)
-    err_mag = int(err.logb())
+    if err != 0:
+        err_mag = int(err.logb())
+    else:
+        err_mag = 0
+
     a = round(float(val), -1*err_mag)
     if err_mag < 0:
         return a
@@ -96,12 +107,16 @@ def short_float(val, err):
         return int(a)
 
 
-def pos_fmt(val, err=0, max_digits=15):
+def pos_fmt(val, err=None, max_digits=15):
     val = str(val)
     if ":" not in val:
         try:
             dd = int(val)
-            return str(dd)
+            dd_str = str(dd)
+            if dd < 10:
+                dd_str = "0"+dd_str
+
+            return dd_str
         except:
             raise RuntimeError("Can only format positions of "
                                "format DD:MM:SS.S...")
@@ -112,7 +127,7 @@ def pos_fmt(val, err=0, max_digits=15):
         if len(val.split(":")) == 3:
             ss = val.split(":")[2]
 
-    if not isinstance(err, Decimal):
+    if not isinstance(err, Decimal) and err is not None:
         try:
             err = Decimal(err)
         except:
@@ -120,24 +135,37 @@ def pos_fmt(val, err=0, max_digits=15):
 
     if err == Decimal(0):
         err_mag = 0
+    elif err is None:
+        err_mag = int(Decimal(ss.split('.')[1]).logb())
     else:
         err_mag = int(err.logb())
 
     if ss:
         max_digits -= (len(dd)+len(mm)+2)
-        ss = short_float(ss, err)
+        if err is not None:
+            ss = short_float(ss, err)
+        else:
+            ss = Decimal(ss)
+
         if err == Decimal(0):
             return "{{}}:{{}}:{{:<{}d}}".format(max_digits)\
                                         .format(dd, mm, ss)
+        elif err is None:
+            return "{{}}:{{}}:{{:<{}.{}f}}".format(max_digits, err_mag)\
+                                        .format(dd, mm, ss)
         else:
             ss_e = short_err(err)
-            if err_mag > 0:
-                return "{{}}:{{}}:{{:<{}d}}{{}}"\
-                    .format(max_digits).format(dd, mm, ss, ss_e)
+            if ss < 10:
+                ss_add = "0"
             else:
-                return "{{}}:{{}}:{{:<{}.{}f}}{{}}"\
+                ss_add = ""
+            if err_mag > 0:
+                return "{{}}:{{}}:{{}}{{:<{}d}}{{}}"\
+                    .format(max_digits).format(dd, mm, ss_add, ss, ss_e)
+            else:
+                return "{{}}:{{}}:{{}}{{:<{}.{}f}}{{}}"\
                     .format(max_digits, -1*err_mag)\
-                    .format(dd, mm, ss, ss_e)
+                    .format(dd, mm, ss_add, ss, ss_e)
 
     else:
         max_digits -= (len(dd)+1)
@@ -175,15 +203,15 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
     @------------------------------------
     """
 
-    sep_str = "@"+('-'*30)+"\n"
+    sep_str = "@"+('-'*40)+"\n"
     max_digits = 15
 
     fmt_e = "{{:<{0}s}}{{:<{0}s}}{{}}\n".format(max_digits+2)
     fmt = "{{:<{0}s}}{{}}\n".format(max_digits+2)
 
-    # convert dictionaries to lists
+    # put dictionaries into lists
     if isinstance(psr_pars, dict):
-        psr_pars = [psr_pars[A] for A in psr_pars]
+        psr_pars = [psr_pars]
 
     if append:
         mode = 'a'
@@ -203,15 +231,23 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
                     out_str = pos_fmt(P[par], P[par+"_ERR"],
                                       max_digits+2)
                 else:
-                    out_str = pos_fmt(P[par], 0, max_digits+2)
+                    out_str = pos_fmt(P[par], max_digits=max_digits+2)
                 line_fmt = fmt.format(par, out_str)
             
             elif par+"_ERR" in P.keys():
                 # process with uncertainty
                 val = P[par]
-                val_mag = val.logb()
+                if val != 0:
+                    val_mag = Decimal(val).logb()
+                else:
+                    val_mag = Decimal('0')
+
                 err = P[par+"_ERR"]
-                err_mag = err.logb()
+                if err != 0:
+                    err_mag = err.logb()
+                else:
+                    err_mag = Decimal('0')
+
                 val = short_float(val, err)
                 err = short_err(err)
                 if err_mag < 0:
@@ -219,8 +255,8 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
                     #    raise RuntimeError("Not enough digits for {}"
                     #                       .format(par))
                     if par+"_TYPE" in P.keys() and P[par+"_TYPE"] == 'e':
-                        val_str = "{{:.{}e}}".format(val_mag-err_mag)\
-                                             .format(val)
+                        mag = val_mag - err_mag if err_mag < val_mag else 0
+                        val_str = "{{:.{}e}}".format(mag).format(val)
                     else:
                         val_str = "{{:.{}f}}".format(-1*err_mag)\
                                              .format(val)
@@ -231,7 +267,11 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
                 # no uncertainty
                 val = P[par]
                 if isinstance(val, float) or isinstance(val, Decimal):
-                    val = "{{:<{}.8f}}".format(max_digits).format(val)
+                    if np.abs(val) < 1e-4:
+                        val = "{{:<{}.5e}}".format(max_digits).format(val)
+                    else:
+                        val = "{{:<{}.10f}}".format(max_digits).format(val)
+
                 line_fmt = fmt.format(par, val)
 
             f.write(line_fmt)
