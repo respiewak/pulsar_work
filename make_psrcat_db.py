@@ -2,7 +2,7 @@ from __future__ import division, print_function
 
 import numpy as np
 import argparse as ap
-from decimal import Decimal
+from decimal import (Decimal, DivisionByZero, InvalidOperation)
 from collections import OrderedDict
 
 
@@ -46,7 +46,7 @@ def read_par(parf, skip_pars):
     f = open(parf, 'r')
     for line in f.readlines():
         err = None
-        f_type = None
+        p_type = None
         sline = line.split()
         if len(sline) == 0 or sline[0] in skip_pars or line[0] == "#":
             continue
@@ -60,21 +60,23 @@ def read_par(parf, skip_pars):
 
         try:
             val = int(val)
+            p_type = 'd'
         except ValueError:
             try:
                 val = Decimal(val.replace('D', 'E'))
                 if 'e' in sline[1] or 'E' in sline[1].replace('D', 'E'):
-                    f_type = 'e'
+                    p_type = 'e'
                 else:
-                    f_type = 'f'
-            except:
-                pass
+                    p_type = 'f'
+            except InvalidOperation:
+                p_type = 's'
 
         all_pars[par] = val
         if err:
             all_pars[par+"_ERR"] = Decimal(err)
-        if f_type:
-            all_pars[par+"_TYPE"] = f_type
+
+        if p_type:
+            all_pars[par+"_TYPE"] = p_type
 
     f.close()
 
@@ -93,21 +95,99 @@ def short_err(err):
     return int(a*b)
 
 
-def short_float(val, err):
+def short_float(val, err, max_digits=18):
     err = Decimal(err)
     if err != 0:
         err_mag = int(err.logb())
     else:
         err_mag = 0
 
+    try:
+        if err_mag > int(Decimal(val).logb()):
+            err_mag = int(Decimal(val).logb())-1
+    except DivisionByZero:
+        # only occurs when val == 0
+        return 0
+
+    if err_mag > max_digits:
+        err_mag = max_digits
+    elif err_mag < -max_digits:
+        err_mag = -max_digits
+
     a = round(float(val), -1*err_mag)
-    if err_mag < 0:
+    if -10 < err_mag < 0:
         return a
+    elif err_mag < -9:
+        return "{{:.{}f}}".format(-1*err_mag).format(Decimal(val))
     else:
         return int(a)
 
 
-def pos_fmt(val, err=None, max_digits=15):
+def short_val_err(val, err=None, v_type=None, max_digits=18):
+    err_str = "  "
+    if v_type and v_type in 'ef' and not isinstance(val, Decimal):
+        raise RuntimeError("Wrong type for par: {}".format(val))
+
+    if v_type == 's' or (isinstance(val, str) and v_type is None):
+        return ("{{:<{}s}}".format(max_digits).format(val), "")
+    elif v_type == 'd' and val == 0 and err > val:
+        return ("0", "")
+    else:
+        if v_type is None:
+            if isinstance(val, Decimal):
+                v_type = 'e' if 'e' in str(val) else 'f'
+            elif isinstance(val, int):
+                v_type = 'd'
+            else:
+                raise RuntimeError("Cannot determine value type: {}"
+                                   .format(val))
+
+        if err is None:
+            err_str = ""
+            if '.' in str(val) and v_type == 'f':
+                err_mag = -min(len(str(val).split('.')[1]),
+                               max_digits - (len(str(val).split('.')[0])+1))
+            elif '.' in str(val):
+                # e.g., -2.383043e-14
+                val_mag = int(Decimal(val).logb())
+                err_mag = val_mag-2
+            else:
+                err_mag = 0
+
+        elif err == 0:
+            err_str += "0"
+            err_mag = 0
+        else:
+            err_mag = Decimal(err).logb()
+            a = round(err/10**err_mag, 0)
+            b = float(10**max(Decimal(0), err_mag))
+            err_str += str(int(a*b))
+
+        val_mag = 0 if val == 0 else int(Decimal(val).logb())
+        rel_mag = max(0, val_mag - int(err_mag))
+
+        if v_type == 'd' and err is not None:
+            a = round(val/10**val_mag, rel_mag)
+            b = int(10**val_mag)
+            val_str = "{{:<{}d}}".format(max_digits).format(int(a*b))
+        elif v_type == 'd':
+            val_str = "{{:<{}d}}".format(max_digits).format(int(val))
+        elif v_type == 'e':
+            if rel_mag >=6:
+                max_digits -= 4
+
+            val_str = "{{:<{}.{}e}}".format(max_digits, rel_mag).format(val)
+        elif v_type == 'f':
+            val_str = "{{:<{}.{}f}}".format(max_digits, int(np.abs(err_mag)))\
+                                    .format(val)
+        else:
+            raise RuntimeError("Invalid value type: "+v_type)
+
+        return (val_str, err_str)
+
+
+
+def pos_fmt(val, err=None, max_digits=18):
     val = str(val)
     if ":" not in val:
         try:
@@ -135,50 +215,41 @@ def pos_fmt(val, err=None, max_digits=15):
 
     if err == Decimal(0):
         err_mag = 0
-    elif err is None:
-        err_mag = int(Decimal(ss.split('.')[1]).logb())
-    else:
+    elif err is None and ss is not None:
+        try:
+            err_mag = int(Decimal(ss.split('.')[1]).logb())+1
+        except DivisionByZero:
+            err_mag = 1
+        except IndexError:
+            err_mag = 0
+    elif err is not None:
         err_mag = int(err.logb())
 
     if ss:
-        max_digits -= (len(dd)+len(mm)+2)
-        if err is not None:
-            ss = short_float(ss, err)
-        else:
-            ss = Decimal(ss)
+        max_digits -= len(dd)+3
+        v_type = 'f' if '.' in ss else 'd'
+        ss_s, err_str = short_val_err(Decimal(ss), err, v_type, max_digits)
+        if float(ss) < 10:
+            ss_s = "0{{:<{}s}}".format(max_digits-1).format(ss_s)
 
-        if err == Decimal(0):
-            return "{{}}:{{}}:{{:<{}d}}".format(max_digits)\
-                                        .format(dd, mm, ss)
-        elif err is None:
-            return "{{}}:{{}}:{{:<{}.{}f}}".format(max_digits, err_mag)\
-                                        .format(dd, mm, ss)
-        else:
-            ss_e = short_err(err)
-            if ss < 10:
-                ss_add = "0"
-            else:
-                ss_add = ""
-            if err_mag > 0:
-                return "{{}}:{{}}:{{}}{{:<{}d}}{{}}"\
-                    .format(max_digits).format(dd, mm, ss_add, ss, ss_e)
-            else:
-                return "{{}}:{{}}:{{}}{{:<{}.{}f}}{{}}"\
-                    .format(max_digits, -1*err_mag)\
-                    .format(dd, mm, ss_add, ss, ss_e)
+        return "{}:{}:{}  {}".format(dd, mm, ss_s, err_str)
 
     else:
+        if err is None:
+            err = 0
+
         max_digits -= (len(dd)+1)
         mm = short_float(mm, err)
         if err == Decimal(0):
             return "{{}}:{{:<{}d}}".format(max_digits).format(dd, mm)
         else:
-            mm_e = short_err(err)
+            mm_s, mm_e = short_val_err(mm, err, 'd', max_digits)
             return "{{}}:{{:<{}d}}{{}}"\
                 .format(max_digits).format(dd, mm, mm_e)
         
 
-def write_db(psr_pars, out_file, skip_pars=None, append=False):
+def write_db(psr_pars, out_file, skip_pars=None, append=False,
+             max_digits=18):
     """
     Write out psrcat-style database file for given
     pulsar parameters. 
@@ -204,10 +275,9 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
     """
 
     sep_str = "@"+('-'*40)+"\n"
-    max_digits = 15
 
-    fmt_e = "{{:<{0}s}}{{:<{0}s}}{{}}\n".format(max_digits+2)
-    fmt = "{{:<{0}s}}{{}}\n".format(max_digits+2)
+    fmt_e = "{{:<{0}s}}{{:<{0}s}}  {{}}\n".format(max_digits)
+    fmt = "{{:<{0}s}}{{}}\n".format(max_digits)
 
     # put dictionaries into lists
     if isinstance(psr_pars, dict):
@@ -222,57 +292,24 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False):
     f.write(sep_str)
     for P in psr_pars:
         for par in P.keys():
-            if "_ERR" in par or "_TYPE" in par:
+            if len(par) > 4 and ("_ERR" == par[-4:] or "_TYPE" == par[-5:]):
                 continue
 
             if par in ["RAJ", "DECJ"]:
                 # use formatting function
                 if par+"_ERR" in P.keys():
                     out_str = pos_fmt(P[par], P[par+"_ERR"],
-                                      max_digits+2)
+                                      max_digits)
                 else:
-                    out_str = pos_fmt(P[par], max_digits=max_digits+2)
+                    out_str = pos_fmt(P[par], max_digits=max_digits)
                 line_fmt = fmt.format(par, out_str)
-            
-            elif par+"_ERR" in P.keys():
-                # process with uncertainty
-                val = P[par]
-                if val != 0:
-                    val_mag = Decimal(val).logb()
-                else:
-                    val_mag = Decimal('0')
-
-                err = P[par+"_ERR"]
-                if err != 0:
-                    err_mag = err.logb()
-                else:
-                    err_mag = Decimal('0')
-
-                val = short_float(val, err)
-                err = short_err(err)
-                if err_mag < 0:
-                    #if -1*err_mag > max_digits:
-                    #    raise RuntimeError("Not enough digits for {}"
-                    #                       .format(par))
-                    if par+"_TYPE" in P.keys() and P[par+"_TYPE"] == 'e':
-                        mag = val_mag - err_mag if err_mag < val_mag else 0
-                        val_str = "{{:.{}e}}".format(mag).format(val)
-                    else:
-                        val_str = "{{:.{}f}}".format(-1*err_mag)\
-                                             .format(val)
-                    line_fmt = fmt_e.format(par, val_str, err)
-                else:
-                    line_fmt = fmt_e.format(par, str(val), err)
             else:
-                # no uncertainty
-                val = P[par]
-                if isinstance(val, float) or isinstance(val, Decimal):
-                    if np.abs(val) < 1e-4:
-                        val = "{{:<{}.5e}}".format(max_digits).format(val)
-                    else:
-                        val = "{{:<{}.10f}}".format(max_digits).format(val)
-
-                line_fmt = fmt.format(par, val)
+                v_type = P[par+"_TYPE"] if par+"_TYPE" in P.keys() else None
+                error = P[par+"_ERR"] if par+"_ERR" in P.keys() else None
+                val_str, err_str = short_val_err(P[par], error, v_type,
+                                                 max_digits)
+                line_fmt = "{{:<{}s}}".format(max_digits).format(par)
+                line_fmt += val_str+err_str+"\n"
 
             f.write(line_fmt)
                 
@@ -291,7 +328,7 @@ def main(pars, out, append=False):
     for parf in pars:
         all_pars.append(read_par(parf, skip_pars))
 
-    write_db(all_pars, out, append)
+    write_db(all_pars, out, skip_pars, append)
 
 
 if __name__ == "__main__":
