@@ -1,6 +1,6 @@
 from __future__ import division, print_function
 
-import numpy as np
+#import numpy as np
 import argparse as ap
 from decimal import (Decimal, DivisionByZero, InvalidOperation)
 from collections import OrderedDict
@@ -95,7 +95,7 @@ def short_err(err):
     return int(a*b)
 
 
-def short_float(val, err, max_digits=18):
+def short_float(val, err, max_digits=24):
     err = Decimal(err)
     if err != 0:
         err_mag = int(err.logb())
@@ -123,7 +123,7 @@ def short_float(val, err, max_digits=18):
         return int(a)
 
 
-def short_val_err(val, err=None, v_type=None, max_digits=18):
+def short_val_err(val, err=None, v_type=None, max_digits=24):
     err_str = "  "
     if v_type and v_type in 'ef' and not isinstance(val, Decimal):
         raise RuntimeError("Wrong type for par: {}".format(val))
@@ -144,6 +144,35 @@ def short_val_err(val, err=None, v_type=None, max_digits=18):
 
         if err is None:
             err_str = ""
+            if v_type == 'f':
+                # clean up trailing 0s (opt. followed by single 1) and 9s
+                vs = str(val)
+                if len(vs) > len(vs.rstrip('9')):
+                    val_0, val_1 = vs.split('.')
+                    val_1_d = Decimal(val_1)+Decimal(1)
+                    if len(str(val_1_d)) > len(val_1):
+                        val_0 = str(Decimal(val_0)+Decimal(1))
+                        val_1_d = Decimal('0')
+
+                    val_1_s = str(val_1_d).rstrip('0')
+                    if val_1_s == '':
+                        val_1_s = '0'
+
+                    val_short = "{}.{}".format(val_0, val_1_s)
+                elif vs[-2:] == '01' and \
+                     len(vs)-2 > len(vs.rstrip('1').rstrip('0')):
+                    val_0, val_1 = vs.split('.')
+                    val_1_d = Decimal(val_1)-Decimal(1)
+                    val_1_s = str(val_1_d).rstrip('0')
+                    if val_1_s == '':
+                        val_1_s = '0'
+
+                    val_short = "{}.{}".format(val_0, val_1_s)
+                else:
+                    val_short = vs.rstrip('0')
+
+                val = Decimal(val_short)
+
             if '.' in str(val) and v_type == 'f':
                 err_mag = -min(len(str(val).split('.')[1]),
                                max_digits - (len(str(val).split('.')[0])+1))
@@ -173,12 +202,12 @@ def short_val_err(val, err=None, v_type=None, max_digits=18):
         elif v_type == 'd':
             val_str = "{{:<{}d}}".format(max_digits).format(int(val))
         elif v_type == 'e':
-            if rel_mag >=6:
-                max_digits -= 4
+            #if rel_mag >=6:
+            #    max_digits -= 4
 
             val_str = "{{:<{}.{}e}}".format(max_digits, rel_mag).format(val)
         elif v_type == 'f':
-            val_str = "{{:<{}.{}f}}".format(max_digits, int(np.abs(err_mag)))\
+            val_str = "{{:<{}.{}f}}".format(max_digits, int(abs(err_mag)))\
                                     .format(val)
         else:
             raise RuntimeError("Invalid value type: "+v_type)
@@ -187,7 +216,7 @@ def short_val_err(val, err=None, v_type=None, max_digits=18):
 
 
 
-def pos_fmt(val, err=None, max_digits=18):
+def pos_fmt(val, err=None, max_digits=24):
     val = str(val)
     if ":" not in val:
         try:
@@ -226,30 +255,34 @@ def pos_fmt(val, err=None, max_digits=18):
         err_mag = int(err.logb())
 
     if ss:
-        max_digits -= len(dd)+3
+        max_digits -= len(dd)+4
         v_type = 'f' if '.' in ss else 'd'
         ss_s, err_str = short_val_err(Decimal(ss), err, v_type, max_digits)
         if float(ss) < 10:
-            ss_s = "0{{:<{}s}}".format(max_digits-1).format(ss_s)
+            if ss_s[-1] == ' ':
+                ss_short = ss_s[:-1]
+            elif ss_s == '0':
+                ss_short = "{{:<{}s}}".format(max_digits-1).format(ss_s)
+            else:
+                l = len(ss_s)-1
+                ss_short = "{{:<{}f}}".format(l).format(Decimal(ss_s))
 
-        return "{}:{}:{}  {}".format(dd, mm, ss_s, err_str)
+            ss_s = "0{}".format(ss_short)
+
+        return "{}:{}:{}{}".format(dd, mm, ss_s, err_str)
 
     else:
-        if err is None:
-            err = 0
-
         max_digits -= (len(dd)+1)
-        mm = short_float(mm, err)
+        mm_s, mm_e = short_val_err(int(mm), err, 'd', max_digits)
         if err == Decimal(0):
-            return "{{}}:{{:<{}d}}".format(max_digits).format(dd, mm)
+            return "{{}}:{{:<{}s}}".format(max_digits).format(dd, mm)
         else:
-            mm_s, mm_e = short_val_err(mm, err, 'd', max_digits)
-            return "{{}}:{{:<{}d}}{{}}"\
+            return "{{}}:{{:<{}s}}{{}}"\
                 .format(max_digits).format(dd, mm, mm_e)
         
 
 def write_db(psr_pars, out_file, skip_pars=None, append=False,
-             max_digits=18):
+             max_digits=24):
     """
     Write out psrcat-style database file for given
     pulsar parameters. 
@@ -302,6 +335,7 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False,
                                       max_digits)
                 else:
                     out_str = pos_fmt(P[par], max_digits=max_digits)
+
                 line_fmt = fmt.format(par, out_str)
             else:
                 v_type = P[par+"_TYPE"] if par+"_TYPE" in P.keys() else None
