@@ -15,6 +15,9 @@ def proc_args():
     pars.add_argument("-a", "--append", action="store_true",
                       help="Append to existing file (instead of writing "
                       "new file)")
+    pars.add_argument("-l", "--latex", action="store_true",
+                      help="Format output as latex table(s); "
+                      "uses .tex extension for output file by default")
     return vars(pars.parse_args())
 
 
@@ -179,7 +182,7 @@ def short_val_err(val, err=None, v_type=None, max_digits=24):
             elif '.' in str(val):
                 # e.g., -2.383043e-14
                 val_mag = int(Decimal(val).logb())
-                err_mag = val_mag-2
+                err_mag = val_mag-3
             else:
                 err_mag = 0
 
@@ -188,6 +191,9 @@ def short_val_err(val, err=None, v_type=None, max_digits=24):
             err_mag = 0
         else:
             err_mag = Decimal(err).logb()
+            if round(err/10**err_mag, 0) == 1:
+                err_mag -= 1
+
             a = round(err/10**err_mag, 0)
             b = float(10**max(Decimal(0), err_mag))
             err_str += str(int(a*b))
@@ -352,17 +358,27 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False,
     f.close()
 
 
-def main(pars, out, append=False):
-    skip_pars = ["TRES", "MODE", "TIMEEPH", "NITS",
-                 "NTOA", "CHI2R", "JUMP", "DILATEFREQ",
-                 "PLANET_SHAPIRO", "T2CMETHOD", "NE_SW",
-                 "CORRECT_TROPOSPHERE", "START", "FINISH"]
+def write_tex(psr_pars, out_file, skip_pars=None):
+    pass
+
+
+def main(pars, out, append=False, latex=False):
+    skip_pars = ["MODE", "TIMEEPH", "NITS", "JUMP",
+                 "DILATEFREQ", "PLANET_SHAPIRO", "T2CMETHOD",
+                 "NE_SW", "CORRECT_TROPOSPHERE", "START",
+                 "FINISH"]
 
     all_pars = []
     for parf in pars:
         all_pars.append(read_par(parf, skip_pars))
 
-    write_db(all_pars, out, skip_pars, append)
+    if latex:
+        extras = ["TZRMJD", "TZRFRQ", "TZRSITE", "CLK",
+                  "EPHVER"]
+        write_tex(all_pars, out, skip_pars+extras)
+    else:
+        extras = ["TRES", "NTOA", "CHI2R"]
+        write_db(all_pars, out, skip_pars+extras, append)
 
 
 if __name__ == "__main__":
