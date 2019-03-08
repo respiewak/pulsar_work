@@ -1,5 +1,11 @@
 # Individual additions
 *.db
+bad_pars.log
+test_*.log
+matrix.tmp
+tempo.lis
+resid2.tmp
+20*.ar
 
 
 # Byte-compiled / optimized / DLL files
