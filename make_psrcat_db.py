@@ -55,6 +55,11 @@ def read_par(parf, skip_pars):
             continue
 
         par = sline[0]
+        if par == "E":
+            par = "ECC"
+        elif par == "PSR":
+            par += "J"
+
         val = sline[1]
         if len(sline) == 3 and sline[2] not in ['0', '1']:
             err = sline[2].replace('D', 'E')
@@ -126,8 +131,27 @@ def short_float(val, err, max_digits=24):
         return int(a)
 
 
-def short_val_err(val, err=None, v_type=None, max_digits=24):
+def short_val_err(par, val, err=None, v_type=None, max_digits=24):
     err_str = "  "
+    # number of digits to keep in Sci. not. with no uncertainty
+    num_exp = 3
+    orbitals = ["PB", "A1", "T0", "TASC", "FB0", "SINI", "OM", "ECC",
+                "E", "EPS1", "EPS2", "PBDOT", "XDOT", "OMDOT", "XPBDOT",
+                "A1DOT", "M2", "MTOT", "GAMMA", "DR", "DTHETA", "DTH",
+                "XOMDOT", "EPS1DOT", "EPS2DOT", "KOM", "KIN", "A0",
+                "B0", "BP", "BPP", "SHAPMAX"]
+
+    if par in orbitals:
+        err = None
+        num_exp = 10
+    elif (par[:2] == "FB" or par[:2] == "PB") and len(par) > 2:
+        try:
+            num = int(par[2:])
+            err = None
+            num_exp = 10
+        except: 
+            pass
+
     if v_type and v_type in 'ef' and not isinstance(val, Decimal):
         raise RuntimeError("Wrong type for par: {}".format(val))
 
@@ -182,7 +206,7 @@ def short_val_err(val, err=None, v_type=None, max_digits=24):
             elif '.' in str(val):
                 # e.g., -2.383043e-14
                 val_mag = int(Decimal(val).logb())
-                err_mag = val_mag-3
+                err_mag = val_mag-num_exp
             else:
                 err_mag = 0
 
@@ -222,7 +246,7 @@ def short_val_err(val, err=None, v_type=None, max_digits=24):
 
 
 
-def pos_fmt(val, err=None, max_digits=24):
+def pos_fmt(par, val, err=None, max_digits=24):
     val = str(val)
     if ":" not in val:
         try:
@@ -263,7 +287,8 @@ def pos_fmt(val, err=None, max_digits=24):
     if ss:
         max_digits -= len(dd)+4
         v_type = 'f' if '.' in ss else 'd'
-        ss_s, err_str = short_val_err(Decimal(ss), err, v_type, max_digits)
+        ss_s, err_str = short_val_err(par, Decimal(ss), err, v_type,
+                                      max_digits)
         if float(ss) < 10:
             if ss_s[-1] == ' ':
                 ss_short = ss_s[:-1]
@@ -279,7 +304,7 @@ def pos_fmt(val, err=None, max_digits=24):
 
     else:
         max_digits -= (len(dd)+1)
-        mm_s, mm_e = short_val_err(int(mm), err, 'd', max_digits)
+        mm_s, mm_e = short_val_err(par, int(mm), err, 'd', max_digits)
         if err == Decimal(0):
             return "{{}}:{{:<{}s}}".format(max_digits).format(dd, mm)
         else:
@@ -331,22 +356,23 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False,
     f.write(sep_str)
     for P in psr_pars:
         for par in P.keys():
-            if len(par) > 4 and ("_ERR" == par[-4:] or "_TYPE" == par[-5:]):
+            if len(par) > 4 and ("_ERR" == par[-4:] or "_TYPE" == par[-5:])\
+               or par in skip_pars:
                 continue
 
             if par in ["RAJ", "DECJ"]:
                 # use formatting function
                 if par+"_ERR" in P.keys():
-                    out_str = pos_fmt(P[par], P[par+"_ERR"],
+                    out_str = pos_fmt(par, P[par], P[par+"_ERR"],
                                       max_digits)
                 else:
-                    out_str = pos_fmt(P[par], max_digits=max_digits)
+                    out_str = pos_fmt(par, P[par], max_digits=max_digits)
 
                 line_fmt = fmt.format(par, out_str)
             else:
                 v_type = P[par+"_TYPE"] if par+"_TYPE" in P.keys() else None
                 error = P[par+"_ERR"] if par+"_ERR" in P.keys() else None
-                val_str, err_str = short_val_err(P[par], error, v_type,
+                val_str, err_str = short_val_err(par, P[par], error, v_type,
                                                  max_digits)
                 line_fmt = "{{:<{}s}}".format(max_digits).format(par)
                 line_fmt += val_str+err_str+"\n"
@@ -366,7 +392,7 @@ def main(pars, out, append=False, latex=False):
     skip_pars = ["MODE", "TIMEEPH", "NITS", "JUMP",
                  "DILATEFREQ", "PLANET_SHAPIRO", "T2CMETHOD",
                  "NE_SW", "CORRECT_TROPOSPHERE", "START",
-                 "FINISH"]
+                 "FINISH", "T2EFAC", "TRACK"]
 
     all_pars = []
     for parf in pars:
