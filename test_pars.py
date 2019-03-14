@@ -15,23 +15,46 @@ pars.add_argument('pars', nargs="+", help="Par files to process; e.g., "
                   "`ls -t *.par` (sorting by time recommended)")
 pars.add_argument('-u', '--update', action="store_true",
                   help="Flag to indicate updating old ephemerides")
+pars.add_argument('-m', '--move_bool', action='store_false',
+                  help="Do not move par files into 'folding_ephems' dir.")
+pars.add_argument('-d', '--src_dir', default="./",
+                  help="specify directory for log and header.dada; "
+                  "assume 'folding_ephems' dir. (if any) is one dir. up")
 args = vars(pars.parse_args())
 
-sched_dir = "/fred/oz002/software/meersched/"
+move_bool = args['move_bool']
+src_dir = args['src_dir']
+if src_dir[-1] != '/':
+    src_dir +='/'
+
+if not os.path.exists(src_dir):
+    raise(RuntimeError("Not valid path: "+src_dir))
+
+#sched_dir = "/fred/oz002/software/meersched/"
 # check names to avoid repetition (assume first par is best)
 check_names = []
 
-log_file = sched_dir+'par_testing/bad_pars.log'
+if src_dir == './':
+    fold_dir = "../"
+else:
+    fold_dir = os.path.split(os.path.split(src_dir)[0])[0]+'/'
+
+if not os.path.exists(fold_dir+"folding_ephems") and move_bool:
+    raise(RuntimeError("Could not find folding_ephems dir. in "+fold_dir))
+
+fold_dir += "folding_ephems/"
+
+log_file = src_dir+'bad_pars.log'
 if len(glob(log_file)) > 0:
     os.remove(log_file)
 
 for par in args['pars']:
     try:
-        jname = sproc.Popen(shlex.split('grep PSRJ {}'.format(par)),
+        jname = sproc.Popen(shlex.split('grep PSRJ {0}'.format(par)),
                             stdout=sproc.PIPE).communicate()[0].split()[1]
     except IndexError:
         with open(log_file, 'a') as f:
-            f.write("ERROR: Could not find PSRJ in par file {}; skipping\n"
+            f.write("ERROR: Could not find PSRJ in par file {0}; skipping\n"
                     .format(par))
         continue
 
@@ -39,22 +62,22 @@ for par in args['pars']:
         check_names.append(jname)
     else:
         with open(log_file, 'a') as f:
-            f.write("WARNING: Multiple par files for {}; skipping {}\n"
+            f.write("WARNING: Multiple par files for {0}; skipping {}\n"
                     .format(jname, par))
         continue
 
-    if len(glob(sched_dir+'folding_ephems/'+os.path.split(par)[1])) > 0 \
+    if len(glob(fold_dir+os.path.split(par)[1])) > 0 \
        and not args['update']:
         continue
 
     user = sproc.Popen(shlex.split('whoami'), stdout=sproc.PIPE)\
                 .communicate()[0].rstrip('\n')
-    tempo_file = '/tmp/tempo2/{}/stdout.txt'.format(user)
+    tempo_file = '/tmp/tempo2/{0}/stdout.txt'.format(user)
 
     if len(glob(tempo_file)) > 0:
         os.remove(tempo_file)
 
-    header = sched_dir+'par_testing/header.dada'
+    header = src_dir+'header.dada'
     with open(header, 'r') as f:
         lines = f.readlines()
         for line in lines:
@@ -85,16 +108,16 @@ for par in args['pars']:
     with open(log_file, 'a') as f:
         if p0 is None:
             p0 = 1
-            f.write('WARNING: Could not get period from par file {}; '
+            f.write('WARNING: Could not get period from par file {0}; '
                     'assuming 1s\n'.format(par))
 
         if dm is None:
-            f.write("ERROR: Could not get DM from par file {}; skipping\n"
+            f.write("ERROR: Could not get DM from par file {0}; skipping\n"
                     .format(par))
             continue
 
     kernel = None
-    p = sproc.Popen(shlex.split("dmsmear -f 1070 -b 428 -n 512 -d {}"
+    p = sproc.Popen(shlex.split("dmsmear -f 1070 -b 428 -n 512 -d {0}"
                                 .format(dm)), stderr=sproc.PIPE)\
         .communicate()[1]
     for pline in p.split('\n'):
@@ -107,21 +130,21 @@ for par in args['pars']:
                     "skipping {}\n".format(par))
         continue
 
-    dspsr_cmd = 'dspsr {} -T {} -Q -minram 1024 -cuda 0 -no_dyn -x {} -E {}'\
+    dspsr_cmd = 'dspsr {0} -T {1} -Q -minram 1024 -cuda 0 -no_dyn -x {2} -E {3}'\
         .format(header, int(2*p0 + 1), kernel, par)
     p = sproc.Popen(shlex.split(dspsr_cmd), stderr=sproc.PIPE)
     p.wait()
     err = p.communicate()[1]
     if "Error::message" in err:
         kernel *= 2
-        dspsr_cmd = 'dspsr {} -T {} -Q -minram 1024 -cuda 0 -no_dyn -x '\
-                    '{} -E {}'.format(header, int(2*p0 + 1), kernel, par)
+        dspsr_cmd = 'dspsr {0} -T {1} -Q -minram 1024 -cuda 0 -no_dyn -x '\
+                    '{2} -E {3}'.format(header, int(2*p0 + 1), kernel, par)
         p = sproc.Popen(shlex.split(dspsr_cmd), stderr=sproc.PIPE)
         p.wait()
         err = p.communicate()[1]
         if "Error::message" in err:
             with open(log_file, 'a') as f:
-                f.write("ERROR: Could not process with dspsr: {}\n".format(par))
+                f.write("ERROR: Could not process with dspsr: {0}\n".format(par))
 
             continue
 
@@ -134,9 +157,8 @@ for par in args['pars']:
 
     with open(log_file, 'a') as f:
         if rms > p0:
-            f.write('ERROR: RMS larger than period for {}\n'.format(par))
-        else:
-            sproc.call(shlex.split('cp {} {}folding_ephems/.'
-                                   .format(par, sched_dir)))
+            f.write('ERROR: RMS larger than period for {0}\n'.format(par))
+        elif move_bool:
+            sproc.call(shlex.split('cp {0} {1}.'.format(par, fold_dir)))
 
 

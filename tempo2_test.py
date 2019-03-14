@@ -4,7 +4,11 @@ import numpy as np
 import subprocess as sproc
 from glob import glob
 from shlex import split as shp
-from astropy.time import Time
+try:
+    from astropy.time import Time
+    apy_bool = True
+except:
+    apy_bool = False
 
 pars = argparse.ArgumentParser()
 pars.add_argument("psrs", nargs="+")
@@ -30,8 +34,13 @@ mv_call = "mv {} {}"
 cp_call = "cp {} {}"
 fold_eph_dir = "second_ephems"
 
-t = Time.now()
-temp_log = "test_{:.4f}.log".format(t.mjd)
+if apy_bool:
+    t = Time.now()
+    temp_log = "test_{:.4f}.log".format(t.mjd)
+else:
+    blob = glob("test*log")
+    n = len(blob)+1
+    temp_log = "test_{}.log".format(n)
 
 if not os.path.exists(root_dir+db_file) \
    or not os.path.exists(root_dir+fold_eph_dir):

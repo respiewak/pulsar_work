@@ -126,7 +126,7 @@ def short_float(val, err, max_digits=24):
     if -10 < err_mag < 0:
         return a
     elif err_mag < -9:
-        return "{{:.{}f}}".format(-1*err_mag).format(Decimal(val))
+        return "{{0:.{0}f}}".format(-1*err_mag).format(Decimal(val))
     else:
         return int(a)
 
@@ -153,10 +153,10 @@ def short_val_err(par, val, err=None, v_type=None, max_digits=24):
             pass
 
     if v_type and v_type in 'ef' and not isinstance(val, Decimal):
-        raise RuntimeError("Wrong type for par: {}".format(val))
+        raise RuntimeError("Wrong type for par: {0}".format(val))
 
     if v_type == 's' or (isinstance(val, str) and v_type is None):
-        return ("{{:<{}s}}".format(max_digits).format(val), "")
+        return ("{{0:<{0}s}}".format(max_digits).format(val), "")
     elif v_type == 'd' and val == 0 and err > val:
         return ("0", "")
     else:
@@ -166,7 +166,7 @@ def short_val_err(par, val, err=None, v_type=None, max_digits=24):
             elif isinstance(val, int):
                 v_type = 'd'
             else:
-                raise RuntimeError("Cannot determine value type: {}"
+                raise RuntimeError("Cannot determine value type: {0}"
                                    .format(val))
 
         if err is None:
@@ -185,7 +185,7 @@ def short_val_err(par, val, err=None, v_type=None, max_digits=24):
                     if val_1_s == '':
                         val_1_s = '0'
 
-                    val_short = "{}.{}".format(val_0, val_1_s)
+                    val_short = "{0}.{1}".format(val_0, val_1_s)
                 elif vs[-2:] == '01' and \
                      len(vs)-2 > len(vs.rstrip('1').rstrip('0')):
                     val_0, val_1 = vs.split('.')
@@ -194,7 +194,7 @@ def short_val_err(par, val, err=None, v_type=None, max_digits=24):
                     if val_1_s == '':
                         val_1_s = '0'
 
-                    val_short = "{}.{}".format(val_0, val_1_s)
+                    val_short = "{0}.{1}".format(val_0, val_1_s)
                 else:
                     val_short = vs.rstrip('0')
 
@@ -228,16 +228,16 @@ def short_val_err(par, val, err=None, v_type=None, max_digits=24):
         if v_type == 'd' and err is not None:
             a = round(val/10**val_mag, rel_mag)
             b = int(10**val_mag)
-            val_str = "{{:<{}d}}".format(max_digits).format(int(a*b))
+            val_str = "{{0:<{0}d}}".format(max_digits).format(int(a*b))
         elif v_type == 'd':
-            val_str = "{{:<{}d}}".format(max_digits).format(int(val))
+            val_str = "{{0:<{0}d}}".format(max_digits).format(int(val))
         elif v_type == 'e':
             #if rel_mag >=6:
             #    max_digits -= 4
 
-            val_str = "{{:<{}.{}e}}".format(max_digits, rel_mag).format(val)
+            val_str = "{{0:<{0}.{1}e}}".format(max_digits, rel_mag).format(val)
         elif v_type == 'f':
-            val_str = "{{:<{}.{}f}}".format(max_digits, int(abs(err_mag)))\
+            val_str = "{{0:<{0}.{1}f}}".format(max_digits, int(abs(err_mag)))\
                                     .format(val)
         else:
             raise RuntimeError("Invalid value type: "+v_type)
@@ -293,22 +293,22 @@ def pos_fmt(par, val, err=None, max_digits=24):
             if ss_s[-1] == ' ':
                 ss_short = ss_s[:-1]
             elif ss_s == '0':
-                ss_short = "{{:<{}s}}".format(max_digits-1).format(ss_s)
+                ss_short = "{{0:<{0}s}}".format(max_digits-1).format(ss_s)
             else:
                 l = len(ss_s)-1
-                ss_short = "{{:<{}f}}".format(l).format(Decimal(ss_s))
+                ss_short = "{{0:<{0}f}}".format(l).format(Decimal(ss_s))
 
-            ss_s = "0{}".format(ss_short)
+            ss_s = "0{0}".format(ss_short)
 
-        return "{}:{}:{}{}".format(dd, mm, ss_s, err_str)
+        return "{0}:{1}:{2}{3}".format(dd, mm, ss_s, err_str)
 
     else:
         max_digits -= (len(dd)+1)
         mm_s, mm_e = short_val_err(par, int(mm), err, 'd', max_digits)
         if err == Decimal(0):
-            return "{{}}:{{:<{}s}}".format(max_digits).format(dd, mm)
+            return "{{0}}:{{1:<{0}s}}".format(max_digits).format(dd, mm)
         else:
-            return "{{}}:{{:<{}s}}{{}}"\
+            return "{{0}}:{{1:<{0}s}}{{2}}"\
                 .format(max_digits).format(dd, mm, mm_e)
         
 
@@ -340,8 +340,8 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False,
 
     sep_str = "@"+('-'*40)+"\n"
 
-    fmt_e = "{{:<{0}s}}{{:<{0}s}}  {{}}\n".format(max_digits)
-    fmt = "{{:<{0}s}}{{}}\n".format(max_digits)
+    fmt_e = "{{0:<{0}s}}{{1:<{0}s}}  {{2}}\n".format(max_digits)
+    fmt = "{{0:<{0}s}}{{1}}\n".format(max_digits)
 
     # put dictionaries into lists
     if isinstance(psr_pars, dict):
@@ -374,7 +374,7 @@ def write_db(psr_pars, out_file, skip_pars=None, append=False,
                 error = P[par+"_ERR"] if par+"_ERR" in P.keys() else None
                 val_str, err_str = short_val_err(par, P[par], error, v_type,
                                                  max_digits)
-                line_fmt = "{{:<{}s}}".format(max_digits).format(par)
+                line_fmt = "{{0:<{0}s}}".format(max_digits).format(par)
                 line_fmt += val_str+err_str+"\n"
 
             f.write(line_fmt)
