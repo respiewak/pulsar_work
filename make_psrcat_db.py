@@ -403,7 +403,8 @@ def main(pars, out, append=False, latex=False):
                   "EPHVER"]
         write_tex(all_pars, out, skip_pars+extras)
     else:
-        extras = ["TRES", "NTOA", "CHI2R"]
+        extras = ["TRES", "NTOA", "CHI2R", "TNRedAmp",
+                  "TNEF", "TNEQ", "TNRedGam", "TNRedC"]
         write_db(all_pars, out, skip_pars+extras, append)
 
 
