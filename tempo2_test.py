@@ -109,6 +109,13 @@ for psr in psrs:
     p = sproc.Popen(shp(t2_call.format(psr_rms, psr_par)),
                     stdout=sproc.PIPE, stderr=sproc.PIPE)
     p.wait()
+    if not os.path.exists("{0}.simulate".format(psr)):
+        print("No simulated tim file written by tempo2 for "+psr)
+        with open(temp_log, 'a') as f:
+            f.write(psr+"\t#FAILED\n")
+
+        continue
+
     sproc.call(shp(mv_call.format("{}.simulate".format(psr), temp_sim)))
 
     p = sproc.Popen(shp(t2_call2), stdout=sproc.PIPE, stderr=sproc.PIPE)
