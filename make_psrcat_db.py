@@ -57,8 +57,6 @@ def read_par(parf, skip_pars):
         par = sline[0]
         if par == "E":
             par = "ECC"
-        elif par == "PSR":
-            par += "J"
 
         val = sline[1]
         if len(sline) == 3 and sline[2] not in ['0', '1']:
