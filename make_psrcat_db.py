@@ -388,8 +388,8 @@ def write_tex(psr_pars, out_file, skip_pars=None):
 
 def main(pars, out, append=False, latex=False):
     skip_pars = ["MODE", "TIMEEPH", "NITS", "JUMP",
-                 "DILATEFREQ", "PLANET_SHAPIRO", "T2CMETHOD",
-                 "NE_SW", "CORRECT_TROPOSPHERE", "START",
+                 "DILATEFREQ", "PLANET_SHAPIRO",
+                 "NE_SW", "START",
                  "FINISH", "T2EFAC", "TRACK"]
 
     all_pars = []
